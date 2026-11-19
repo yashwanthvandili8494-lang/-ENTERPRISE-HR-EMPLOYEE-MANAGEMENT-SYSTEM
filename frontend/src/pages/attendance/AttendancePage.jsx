@@ -49,7 +49,7 @@ export default function AttendancePage() {
     try {
       const limit = viewMode === 'calendar' ? 100 : 15;
       if (tab === 'my' && user?.employee?._id) {
-        const res = await api.get(`/attendance/my?month=${month}&year=${year}&page=${page}&limit=${limit}`);
+        const res = await api.get(`/attendance/my?month=${month}&year=${year}&page=${page}&limit=${limit}&timezone=${encodeURIComponent(tz)}`);
         setMyData(res.data.data);
         setMeta(res.data.meta);
       } else {
@@ -58,6 +58,7 @@ export default function AttendancePage() {
           year: String(year),
           page: String(page),
           limit: String(limit),
+          timezone: tz,
         });
         if (statusFilter) params.append('status', statusFilter);
         const res = await api.get(`/attendance?${params.toString()}`);
