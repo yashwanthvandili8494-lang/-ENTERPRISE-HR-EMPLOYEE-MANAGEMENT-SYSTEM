@@ -14,48 +14,74 @@ export function formatCurrency(amount, currency = 'INR') {
   }).format(Number(amount) || 0);
 }
 
-export function formatDate(dateVal, timeZone = 'UTC') {
+export function getLiveTimezone(preferredTimezone) {
+  if (preferredTimezone && preferredTimezone !== 'UTC') {
+    return preferredTimezone;
+  }
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || preferredTimezone || 'Asia/Kolkata';
+  } catch (_) {
+    return preferredTimezone || 'Asia/Kolkata';
+  }
+}
+
+export function formatDate(dateVal, timeZone) {
   if (!dateVal) return '—';
   try {
-    return new Intl.DateTimeFormat('en-US', {
+    const tz = getLiveTimezone(timeZone);
+    return new Intl.DateTimeFormat('en-IN', {
       year: 'numeric',
       month: 'short',
       day: '2-digit',
-      timeZone,
+      timeZone: tz,
     }).format(new Date(dateVal));
   } catch (_) {
     return String(dateVal).slice(0, 10);
   }
 }
 
-export function formatTime(dateVal, timeZone = 'UTC') {
+export function formatTime(dateVal, timeZone, includeSeconds = false) {
   if (!dateVal) return '—';
   try {
-    return new Intl.DateTimeFormat('en-US', {
+    const tz = getLiveTimezone(timeZone);
+    return new Intl.DateTimeFormat('en-IN', {
       hour: '2-digit',
       minute: '2-digit',
+      ...(includeSeconds ? { second: '2-digit' } : {}),
       hour12: true,
-      timeZone,
+      timeZone: tz,
     }).format(new Date(dateVal));
   } catch (_) {
-    return new Date(dateVal).toISOString().slice(11, 16);
+    return new Date(dateVal).toLocaleTimeString();
   }
 }
 
-export function formatDateTime(dateVal, timeZone = 'UTC') {
+export function formatDateTime(dateVal, timeZone, includeSeconds = false) {
   if (!dateVal) return '—';
   try {
-    return new Intl.DateTimeFormat('en-US', {
+    const tz = getLiveTimezone(timeZone);
+    return new Intl.DateTimeFormat('en-IN', {
       year: 'numeric',
       month: 'short',
       day: '2-digit',
       hour: '2-digit',
       minute: '2-digit',
-      timeZone,
+      ...(includeSeconds ? { second: '2-digit' } : {}),
+      hour12: true,
+      timeZone: tz,
     }).format(new Date(dateVal));
   } catch (_) {
-    return new Date(dateVal).toISOString();
+    return new Date(dateVal).toLocaleString();
   }
+}
+
+export function formatDurationMs(durationMs) {
+  if (!durationMs || durationMs < 0) return '00h 00m 00s';
+  const totalSeconds = Math.floor(durationMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(hours).padStart(2, '0')}h ${String(minutes).padStart(2, '0')}m ${String(seconds).padStart(2, '0')}s`;
 }
 
 export function getStatusBadgeClass(status) {

@@ -40,7 +40,7 @@ const companySettingsSchema = new mongoose.Schema(
     },
     timezone: {
       type: String,
-      default: 'UTC',
+      default: 'Asia/Kolkata',
     },
     workingDays: {
       type: [String],

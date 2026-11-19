@@ -19,9 +19,17 @@ const checkIn = asyncHandler(async (req, res) => {
   }
 
   const settings = await getCompanySettings();
-  const tz = settings.timezone || 'UTC';
-  const now = new Date();
-  const dateKey = getDateKeyInTimezone(now, tz);
+  const tz = req.body?.timezone || req.headers['x-timezone'] || settings?.timezone || 'Asia/Kolkata';
+
+  // Support live client timestamp or fallback to server's current live time
+  let now = new Date();
+  if (req.body?.clientTime) {
+    const parsed = new Date(req.body.clientTime);
+    if (!isNaN(parsed.getTime())) {
+      now = parsed;
+    }
+  }
+  const dateKey = req.body?.dateKey || getDateKeyInTimezone(now, tz);
 
   const existing = await Attendance.findOne({ employee: req.user.employee._id, dateKey });
   if (existing && existing.checkIn) {
@@ -56,7 +64,7 @@ const checkIn = asyncHandler(async (req, res) => {
   return sendResponse(res, {
     statusCode: 201,
     message: isLate ? 'Checked in (marked Late Arrival)' : 'Checked in successfully',
-    data: { ...record.toObject(), companyTimezone: tz },
+    data: { ...record.toObject(), companyTimezone: tz, liveTimestamp: now.toISOString() },
   });
 });
 
@@ -66,11 +74,27 @@ const checkOut = asyncHandler(async (req, res) => {
   }
 
   const settings = await getCompanySettings();
-  const tz = settings.timezone || 'UTC';
-  const now = new Date();
-  const dateKey = getDateKeyInTimezone(now, tz);
+  const tz = req.body?.timezone || req.headers['x-timezone'] || settings?.timezone || 'Asia/Kolkata';
 
-  const record = await Attendance.findOne({ employee: req.user.employee._id, dateKey });
+  let now = new Date();
+  if (req.body?.clientTime) {
+    const parsed = new Date(req.body.clientTime);
+    if (!isNaN(parsed.getTime())) {
+      now = parsed;
+    }
+  }
+  const dateKey = req.body?.dateKey || getDateKeyInTimezone(now, tz);
+
+  // Find today's record by dateKey, or fall back to any open check-in without check-out
+  let record = await Attendance.findOne({ employee: req.user.employee._id, dateKey });
+  if (!record || !record.checkIn) {
+    record = await Attendance.findOne({
+      employee: req.user.employee._id,
+      checkIn: { $ne: null },
+      checkOut: null,
+    }).sort({ checkIn: -1 });
+  }
+
   if (!record || !record.checkIn) {
     throw new ApiError(400, 'Cannot check out without checking in first today.');
   }
@@ -107,7 +131,7 @@ const checkOut = asyncHandler(async (req, res) => {
   return sendResponse(res, {
     statusCode: 200,
     message: 'Checked out successfully',
-    data: { ...record.toObject(), companyTimezone: tz },
+    data: { ...record.toObject(), companyTimezone: tz, liveTimestamp: now.toISOString() },
   });
 });
 
@@ -117,8 +141,9 @@ const getMyAttendance = asyncHandler(async (req, res) => {
   }
 
   const settings = await getCompanySettings();
-  const tz = settings.timezone || 'UTC';
-  const todayKey = getDateKeyInTimezone(new Date(), tz);
+  const tz = req.headers['x-timezone'] || req.query.timezone || settings?.timezone || 'Asia/Kolkata';
+  const now = new Date();
+  const todayKey = getDateKeyInTimezone(now, tz);
 
   const { page, limit, skip } = parsePagination(req.query, '-date');
   const filter = { employee: req.user.employee._id };
@@ -139,6 +164,13 @@ const getMyAttendance = asyncHandler(async (req, res) => {
     Attendance.findOne({ employee: req.user.employee._id, dateKey: todayKey }).lean(),
   ]);
 
+  // If todayRecord not found, check if there's an open checkIn
+  const activeToday = todayRecord || await Attendance.findOne({
+    employee: req.user.employee._id,
+    checkIn: { $ne: null },
+    checkOut: null,
+  }).sort({ checkIn: -1 }).lean();
+
   const summary = {
     totalDays: records.length,
     present: records.filter((r) => r.status === 'Present').length,
@@ -153,8 +185,9 @@ const getMyAttendance = asyncHandler(async (req, res) => {
     statusCode: 200,
     message: 'Personal attendance retrieved',
     data: {
-      today: todayRecord,
+      today: activeToday,
       todayKey,
+      liveServerTime: now.toISOString(),
       companyTimezone: tz,
       summary,
       records,
@@ -165,7 +198,9 @@ const getMyAttendance = asyncHandler(async (req, res) => {
 
 const getAttendance = asyncHandler(async (req, res) => {
   const settings = await getCompanySettings();
-  const tz = settings.timezone || 'UTC';
+  const tz = req.headers['x-timezone'] || req.query.timezone || settings?.timezone || 'Asia/Kolkata';
+  const now = new Date();
+  const todayKey = getDateKeyInTimezone(now, tz);
   const { page, limit, skip } = parsePagination(req.query, '-dateKey');
   const filter = {};
 
@@ -231,6 +266,8 @@ const getAttendance = asyncHandler(async (req, res) => {
     message: 'Attendance records retrieved',
     data: {
       companyTimezone: tz,
+      todayKey,
+      liveServerTime: now.toISOString(),
       records,
     },
     meta: buildMeta(total, page, limit),

@@ -13,9 +13,9 @@ const { getDateKeyInTimezone } = require('../utils/timezone');
 
 const getStats = asyncHandler(async (req, res) => {
   const settings = await getCompanySettings();
-  const tz = settings.timezone || 'UTC';
-  const todayKey = getDateKeyInTimezone(new Date(), tz);
+  const tz = req.headers['x-timezone'] || req.query.timezone || settings.timezone || 'Asia/Kolkata';
   const now = new Date();
+  const todayKey = getDateKeyInTimezone(now, tz);
   const todayStart = new Date(`${todayKey}T00:00:00.000Z`);
   const todayEnd = new Date(`${todayKey}T23:59:59.999Z`);
 
@@ -113,6 +113,7 @@ const getStats = asyncHandler(async (req, res) => {
     data: {
       todayKey,
       companyTimezone: tz,
+      liveServerTime: now.toISOString(),
       kpis: {
         totalEmployees,
         activeEmployees,

@@ -53,7 +53,7 @@ async function seedDemo() {
     phone: '+1 (512) 555-0148',
     officialEmail: 'hr@vanguard-demo.local',
     website: 'https://vanguard-demo.local',
-    timezone: 'UTC',
+    timezone: 'Asia/Kolkata',
     workingDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
     workingHours: {
       startTime: '09:00',

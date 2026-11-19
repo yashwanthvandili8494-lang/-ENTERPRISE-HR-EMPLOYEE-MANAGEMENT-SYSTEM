@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'react-toastify';
-import { Calendar, Clock, List, LogIn, LogOut, Plus } from 'lucide-react';
+import { Calendar, Clock, List, LogIn, LogOut, Plus, Zap, Timer } from 'lucide-react';
 import api, { getErrorMessage } from '../../services/api';
 import { useAuth, ROLES } from '../../context/AuthContext';
 import Badge from '../../components/common/Badge';
@@ -9,7 +9,8 @@ import Loader from '../../components/common/Loader';
 import Pagination from '../../components/common/Pagination';
 import Modal from '../../components/common/Modal';
 import AttendanceCalendar from '../../components/attendance/AttendanceCalendar';
-import { formatTime } from '../../utils/formatters';
+import LiveClock from '../../components/common/LiveClock';
+import { formatTime, formatDate, getLiveTimezone } from '../../utils/formatters';
 
 export default function AttendancePage() {
   const { user, companySettings, hasRole } = useAuth();
@@ -19,8 +20,8 @@ export default function AttendancePage() {
   const now = new Date();
   const [tab, setTab] = useState(user?.employee?._id ? 'my' : 'team');
   const [viewMode, setViewMode] = useState('table');
-  const [month, setMonth] = useState(now.getUTCMonth() + 1);
-  const [year, setYear] = useState(now.getUTCFullYear());
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [year, setYear] = useState(now.getFullYear());
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
 
@@ -32,7 +33,7 @@ export default function AttendancePage() {
   const [clockBusy, setClockBusy] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
 
-  const tz = myData?.companyTimezone || companySettings?.timezone || 'UTC';
+  const tz = getLiveTimezone(myData?.companyTimezone || companySettings?.timezone);
 
   const manualForm = useForm({
     defaultValues: {
@@ -83,7 +84,12 @@ export default function AttendancePage() {
   const handleCheckIn = async () => {
     setClockBusy(true);
     try {
-      const res = await api.post('/attendance/check-in', {});
+      const liveTime = new Date().toISOString();
+      const clientTz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata';
+      const res = await api.post('/attendance/check-in', {
+        clientTime: liveTime,
+        timezone: clientTz,
+      });
       toast.success(res.data.message);
       loadData();
     } catch (err) {
@@ -96,7 +102,12 @@ export default function AttendancePage() {
   const handleCheckOut = async () => {
     setClockBusy(true);
     try {
-      const res = await api.post('/attendance/check-out', {});
+      const liveTime = new Date().toISOString();
+      const clientTz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata';
+      const res = await api.post('/attendance/check-out', {
+        clientTime: liveTime,
+        timezone: clientTz,
+      });
       toast.success(res.data.message);
       loadData();
     } catch (err) {
@@ -106,10 +117,25 @@ export default function AttendancePage() {
     }
   };
 
+  const fillLiveCurrentTime = () => {
+    const live = new Date();
+    const hours = String(live.getHours()).padStart(2, '0');
+    const mins = String(live.getMinutes()).padStart(2, '0');
+    const todayStr = `${live.getFullYear()}-${String(live.getMonth() + 1).padStart(2, '0')}-${String(live.getDate()).padStart(2, '0')}`;
+    manualForm.setValue('dateKey', todayStr);
+    manualForm.setValue('checkInTime', `${hours}:${mins}`);
+  };
+
   const onSaveManual = async (values) => {
     try {
-      const checkInIso = values.checkInTime ? `${values.dateKey}T${values.checkInTime}:00.000Z` : null;
-      const checkOutIso = values.checkOutTime ? `${values.dateKey}T${values.checkOutTime}:00.000Z` : null;
+      let checkInIso = null;
+      if (values.checkInTime) {
+        checkInIso = new Date(`${values.dateKey}T${values.checkInTime}:00`).toISOString();
+      }
+      let checkOutIso = null;
+      if (values.checkOutTime) {
+        checkOutIso = new Date(`${values.dateKey}T${values.checkOutTime}:00`).toISOString();
+      }
       await api.post('/attendance/manual', {
         employee: values.employee,
         dateKey: values.dateKey,
@@ -135,7 +161,7 @@ export default function AttendancePage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Attendance Management</h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            UTC-stored timestamps displayed in company timezone ({tz}).
+            Real-time live attendance tracking • Timezone: <span className="font-semibold text-slate-700">{tz}</span>
           </p>
         </div>
         {canManualRecord && (
@@ -145,42 +171,53 @@ export default function AttendancePage() {
         )}
       </div>
 
+      {/* Live System Clock & Shift Tracker Card */}
+      <LiveClock
+        timezone={tz}
+        checkedInAt={today?.checkIn}
+        checkedOutAt={today?.checkOut}
+      />
+
       {/* Personal Check-In / Check-Out Panel */}
       {user?.employee?._id && (
-        <div className="card p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="card p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-slate-50 to-blue-50/40 border border-blue-100">
           <div className="flex items-center gap-4">
-            <div className="p-3 rounded-xl bg-blue-50 text-blue-700">
+            <div className="p-3 rounded-xl bg-blue-600 text-white shadow-sm">
               <Clock className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900">Today&apos;s Shift ({myData?.todayKey || 'Today'})</h2>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-bold text-slate-900">Today&apos;s Shift ({myData?.todayKey || 'Today'})</h2>
+                {today && <Badge status={today.status} />}
+              </div>
+              <p className="text-xs text-slate-600 mt-0.5">
                 {today?.checkIn
-                  ? `Checked in at ${formatTime(today.checkIn, tz)}${
-                      today.checkOut ? ` • Checked out at ${formatTime(today.checkOut, tz)} (${today.workingHours} hrs)` : ' • Currently clocked in'
+                  ? `Checked in at ${formatTime(today.checkIn, tz, true)}${
+                      today.checkOut
+                        ? ` • Checked out at ${formatTime(today.checkOut, tz, true)} (${today.workingHours} hrs completed)`
+                        : ' • Currently clocked in (Active live shift)'
                     }`
-                  : 'You have not checked in yet today.'}
+                  : 'You have not checked in yet today. Ready to record live check-in.'}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
-            {today && <Badge status={today.status} />}
             <button
               type="button"
               onClick={handleCheckIn}
               disabled={clockBusy || Boolean(today?.checkIn)}
-              className="btn-primary bg-emerald-600 hover:bg-emerald-700"
+              className="btn-primary bg-emerald-600 hover:bg-emerald-700 flex items-center gap-2 shadow-sm disabled:opacity-50"
             >
-              <LogIn className="w-4 h-4" /> Check In
+              <LogIn className="w-4 h-4" /> Check In Live
             </button>
             <button
               type="button"
               onClick={handleCheckOut}
               disabled={clockBusy || !today?.checkIn || Boolean(today?.checkOut)}
-              className="btn-primary bg-amber-600 hover:bg-amber-700"
+              className="btn-primary bg-amber-600 hover:bg-amber-700 flex items-center gap-2 shadow-sm disabled:opacity-50"
             >
-              <LogOut className="w-4 h-4" /> Check Out
+              <LogOut className="w-4 h-4" /> Check Out Live
             </button>
           </div>
         </div>
@@ -356,6 +393,17 @@ export default function AttendancePage() {
       {/* Manual Attendance Modal (HR / Super Admin) */}
       <Modal isOpen={manualOpen} onClose={() => setManualOpen(false)} title="Record Manual Attendance" size="md">
         <form onSubmit={manualForm.handleSubmit(onSaveManual)} className="space-y-4">
+          <div className="flex items-center justify-between bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+            <span className="text-xs text-slate-600 font-medium">Quick Fill:</span>
+            <button
+              type="button"
+              onClick={fillLiveCurrentTime}
+              className="btn-secondary text-xs py-1 px-2.5 flex items-center gap-1.5 bg-white shadow-sm hover:bg-slate-100"
+            >
+              <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500" /> Use Current Live Time
+            </button>
+          </div>
+
           <div>
             <label className="label-text">Employee *</label>
             <select className="input-field" {...manualForm.register('employee', { required: 'Employee is required' })}>
@@ -383,11 +431,11 @@ export default function AttendancePage() {
               </select>
             </div>
             <div>
-              <label className="label-text">Check-In (UTC HH:MM)</label>
+              <label className="label-text">Check-In Time (HH:MM)</label>
               <input type="time" className="input-field" {...manualForm.register('checkInTime')} />
             </div>
             <div>
-              <label className="label-text">Check-Out (UTC HH:MM)</label>
+              <label className="label-text">Check-Out Time (HH:MM)</label>
               <input type="time" className="input-field" {...manualForm.register('checkOutTime')} />
             </div>
           </div>

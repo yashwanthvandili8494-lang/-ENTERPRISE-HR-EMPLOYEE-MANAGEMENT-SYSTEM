@@ -6,6 +6,7 @@ import LoginPage from '../pages/auth/LoginPage';
 import Badge from '../components/common/Badge';
 import PayrollFormModal from '../components/payroll/PayrollFormModal';
 import LeaveFormModal from '../components/leave/LeaveFormModal';
+import LiveClock from '../components/common/LiveClock';
 
 // Mock AuthContext for LoginPage test
 vi.mock('../context/AuthContext', () => ({
@@ -96,5 +97,13 @@ describe('Frontend Component & Form Validation Tests', () => {
       expect(screen.getByText(/end date is required/i)).toBeInTheDocument();
       expect(screen.getByText(/reason is required/i)).toBeInTheDocument();
     });
+  });
+
+  it('renders LiveClock with live system clock indicator and shift elapsed timer', () => {
+    const oneHourAgo = new Date(Date.now() - 3600000).toISOString();
+    render(<LiveClock timezone="Asia/Kolkata" checkedInAt={oneHourAgo} checkedOutAt={null} />);
+
+    expect(screen.getByText(/Live System Clock/i)).toBeInTheDocument();
+    expect(screen.getByText(/Shift Elapsed \(Live\)/i)).toBeInTheDocument();
   });
 });
